@@ -314,6 +314,7 @@ mod tests {
 	use super::*;
 	use super::super::mock_stream::MockStream;
 	use super::super::mailbox::Mailbox;
+	use super::super::error::Result;
 
 	#[test]
 	fn read_response() {
