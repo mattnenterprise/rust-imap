@@ -51,7 +51,7 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
             client: client,
             keepalive: Duration::from_secs(29 * 60),
         };
-        h.init()?;
+        try!(h.init());
         Ok(h)
     }
 
@@ -69,7 +69,7 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
         let raw_data = try!(self.client.readline());
         let line = String::from_utf8(raw_data).unwrap();
         if line.starts_with(&tag) {
-            parse_response(vec![line])?;
+            try!(parse_response(vec![line]));
             // We should *only* get a continuation on an error (i.e., it gives BAD or NO).
             unreachable!();
         } else if !line.starts_with("+") {
@@ -80,8 +80,8 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
     }
 
     fn terminate(&mut self) -> Result<()> {
-        self.client.write_line(b"DONE")?;
-        let lines = self.client.read_response()?;
+        try!(self.client.write_line(b"DONE"));
+        let lines = try!(self.client.read_response());
         parse_response_ok(lines)
     }
 
@@ -120,17 +120,17 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> IdleHandle<'a, T> {
         // re-issue it at least every 29 minutes to avoid being logged off.
         // This still allows a client to receive immediate mailbox updates even
         // though it need only "poll" at half hour intervals.
-        self.client.stream.set_read_timeout(Some(self.keepalive))?;
+        try!(self.client.stream.set_read_timeout(Some(self.keepalive)));
         match self.wait() {
             Err(Error::Io(ref e)) if e.kind() == io::ErrorKind::TimedOut ||
                                      e.kind() == io::ErrorKind::WouldBlock => {
                 // we need to refresh the IDLE connection
-                self.terminate()?;
-                self.init()?;
+                try!(self.terminate());
+                try!(self.init());
                 self.wait_keepalive()
             }
             r => {
-                self.client.stream.set_read_timeout(None)?;
+                try!(self.client.stream.set_read_timeout(None));
                 r
             }
         }
@@ -138,9 +138,9 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> IdleHandle<'a, T> {
 
     /// Block until the selected mailbox changes, or until the given amount of time has expired.
     pub fn wait_timeout(&mut self, timeout: Duration) -> Result<()> {
-        self.client.stream.set_read_timeout(Some(timeout))?;
+        try!(self.client.stream.set_read_timeout(Some(timeout)));
         let res = self.wait();
-        self.client.stream.set_read_timeout(None)?;
+        try!(self.client.stream.set_read_timeout(None));
         res
     }
 }
