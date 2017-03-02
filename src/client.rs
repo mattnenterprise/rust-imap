@@ -28,6 +28,7 @@ pub struct Client<T> {
 /// As long a the handle is active, the mailbox cannot be otherwise accessed.
 pub struct IdleHandle<'a, T: Read + Write + 'a> {
     client: &'a mut Client<T>,
+    keepalive: Duration,
 }
 
 /// Must be implemented for a transport in order for a `Client` using that transport to support
@@ -46,7 +47,10 @@ pub trait SetReadTimeout {
 
 impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
     fn new(client: &'a mut Client<T>) -> Result<Self> {
-        let mut h = IdleHandle { client: client };
+        let mut h = IdleHandle {
+            client: client,
+            keepalive: Duration::from_secs(29 * 60),
+        };
         h.init()?;
         Ok(h)
     }
@@ -93,11 +97,19 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
 }
 
 impl<'a, T: SetReadTimeout + Read + Write + 'a> IdleHandle<'a, T> {
+    /// Set the keep-alive interval to use when `wait_keepalive` is called.
+    ///
+    /// The interval defaults to 29 minutes as dictated by RFC 2177.
+    pub fn set_keepalive(&mut self, interval: Duration) {
+        self.keepalive = interval;
+    }
+
     /// Block until the selected mailbox changes.
     ///
-    /// This method differs from `IdleHandle::wait` in that it will periodically (every 29 minutes,
-    /// as dictated by RFC 2177) refresh the IDLE connection, to prevent the server from timing out
-    /// our connection.
+    /// This method differs from `IdleHandle::wait` in that it will periodically refresh the IDLE
+    /// connection, to prevent the server from timing out our connection. The keepalive interval is
+    /// set to 29 minutes by default, as dictated by RFC 2177, but can be changed using
+    /// `set_keepalive`.
     ///
     /// This is the recommended method to use for waiting.
     pub fn wait_keepalive(&mut self) -> Result<()> {
@@ -108,7 +120,7 @@ impl<'a, T: SetReadTimeout + Read + Write + 'a> IdleHandle<'a, T> {
         // re-issue it at least every 29 minutes to avoid being logged off.
         // This still allows a client to receive immediate mailbox updates even
         // though it need only "poll" at half hour intervals.
-        self.client.stream.set_read_timeout(Some(Duration::from_secs(29 * 60)))?;
+        self.client.stream.set_read_timeout(Some(self.keepalive))?;
         match self.wait() {
             Err(Error::Io(ref e)) if e.kind() == io::ErrorKind::TimedOut ||
                                      e.kind() == io::ErrorKind::WouldBlock => {
