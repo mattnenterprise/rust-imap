@@ -76,7 +76,7 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
     }
 
     fn terminate(&mut self) -> Result<()> {
-        self.client.write_line("DONE".as_bytes())?;
+        self.client.write_line(b"DONE")?;
         let lines = self.client.read_response()?;
         parse_response_ok(lines)
     }
