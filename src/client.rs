@@ -407,17 +407,26 @@ impl<T: Read+Write> Client<T> {
 		let mut found_tag_line = false;
 		let start_str = format!("{}{} ", TAG_PREFIX, self.tag);
 		let mut lines: Vec<String> = Vec::new();
+		let mut error = None;
 
 		while !found_tag_line {
 			let raw_data = try!(self.readline());
-			let line = String::from_utf8(raw_data).unwrap();
-			lines.push(line.clone());
-			if (&*line).starts_with(&*start_str) {
-				found_tag_line = true;
+			// if there is an encoding error, still continue until the tag
+			match String::from_utf8(raw_data) {
+				Err(e) => error = Some(e),
+				Ok(line) => {
+					lines.push(line.clone());
+					if (&*line).starts_with(&*start_str) {
+						found_tag_line = true;
+					}		
+				}
 			}
 		}
 
-		Ok(lines)
+		match error {
+			Some(e) => Err(e.into()),
+			None => Ok(lines)
+		}
 	}
 
 	fn read_greeting(&mut self) -> Result<()> {
