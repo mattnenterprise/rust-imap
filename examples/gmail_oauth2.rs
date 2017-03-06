@@ -36,7 +36,7 @@ fn main() {
     match imap_socket.fetch("2", "body[text]") {
         Ok(lines) => {
             for line in lines.iter() {
-                print!("{}", line);
+                print!("{}", String::from_utf8(line.1.clone()).unwrap());
             }
         },
         Err(e) => println!("Error Fetching email 2: {}", e)
