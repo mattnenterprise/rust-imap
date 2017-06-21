@@ -13,6 +13,12 @@ const INITIAL_TAG: u32 = 0;
 const CR: u8 = 0x0d;
 const LF: u8 = 0x0a;
 
+macro_rules! quote {
+	($x: expr) => (
+		format!("\"{}\"", $x.replace("\\", "\\\\").replace("\"", "\\\""))
+		)
+}
+
 /// Stream to interface with the IMAP server. This interface is only for the command stream.
 pub struct Client<T> {
 	stream: T,
@@ -251,7 +257,7 @@ impl<T: Read+Write> Client<T> {
 
 	/// Log in to the IMAP server.
 	pub fn login(&mut self, username: & str, password: & str) -> Result<()> {
-		self.run_command_and_check_ok(&format!("LOGIN {} {}", username, password).to_string())
+		self.run_command_and_check_ok(&format!("LOGIN {} {}", username, quote!(password)).to_string())
 	}
 
 	/// Selects a mailbox
@@ -540,7 +546,7 @@ mod tests {
 		let response = b"a1 OK Logged in\r\n".to_vec();
 		let username = "username";
 		let password = "password";
-		let command = format!("a1 LOGIN {} {}\r\n", username, password);
+		let command = format!("a1 LOGIN {} {}\r\n", username, quote!(password));
 		let mock_stream = MockStream::new(response);
 		let mut client = Client::new(mock_stream);
 		client.login(username, password).unwrap();
