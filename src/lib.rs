@@ -5,6 +5,8 @@
 
 extern crate openssl;
 extern crate regex;
+#[macro_use]
+extern crate lazy_static;
 
 pub mod authenticator;
 pub mod client;
