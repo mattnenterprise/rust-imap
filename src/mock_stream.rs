@@ -43,17 +43,17 @@ impl MockStream {
 
 impl Read for MockStream {
     fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
-        if self.read_delay > 0 {
-            self.read_delay -= 1;
-            return Ok(0);
-        }
         if self.err_on_read {
             return Err(Error::new(ErrorKind::Other, "MockStream Error"));
         }
         if self.read_pos >= self.read_buf.len() {
             return Err(Error::new(ErrorKind::UnexpectedEof, "EOF"));
         }
-        let write_len = min(buf.len(), self.read_buf.len() - self.read_pos);
+        let mut write_len = min(buf.len(), self.read_buf.len() - self.read_pos);
+        if self.read_delay > 0 {
+            self.read_delay -= 1;
+            write_len = min(write_len, 1);
+        }
         let max_pos = self.read_pos + write_len;
         for x in self.read_pos..max_pos {
             buf[x - self.read_pos] = self.read_buf[x];
