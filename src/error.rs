@@ -20,6 +20,8 @@ pub enum Error {
     BadResponse(Vec<String>),
     /// A NO response from the IMAP server.
     NoResponse(Vec<String>),
+    /// The connection was terminated unexpectedly.
+    ConnectionLost,
     // Error parsing a server response.
     Parse(ParseError),
     // Error appending a mail
@@ -62,6 +64,7 @@ impl StdError for Error {
             Error::Parse(ref e) => e.description(),
             Error::BadResponse(_) => "Bad Response",
             Error::NoResponse(_) => "No Response",
+            Error::ConnectionLost => "Connection lost",
             Error::Append => "Could not append mail to mailbox",
         }
     }

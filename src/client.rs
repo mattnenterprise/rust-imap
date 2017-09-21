@@ -481,7 +481,9 @@ impl<T: Read + Write> Client<T> {
     fn readline(&mut self) -> Result<Vec<u8>> {
         use std::io::BufRead;
         let mut line_buffer: Vec<u8> = Vec::new();
-        try!(self.stream.read_until(LF, &mut line_buffer));
+        if try!(self.stream.read_until(LF, &mut line_buffer)) == 0 {
+            return Err(Error::ConnectionLost);
+        }
 
         if self.debug {
             // Remove CRLF
