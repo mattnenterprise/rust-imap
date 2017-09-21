@@ -545,7 +545,7 @@ mod tests {
     fn readline_delay_read() {
         let greeting = "* OK Dovecot ready.\r\n";
         let expected_response: String = greeting.to_string();
-        let mock_stream = MockStream::new_read_delay(greeting.as_bytes().to_vec());
+        let mock_stream = MockStream::default().with_buf(greeting.as_bytes().to_vec()).with_delay();
         let mut client = Client::new(mock_stream);
         let actual_response = String::from_utf8(client.readline().unwrap()).unwrap();
         assert_eq!(expected_response, actual_response);
@@ -553,7 +553,7 @@ mod tests {
 
     #[test]
     fn readline_eof() {
-        let mock_stream = MockStream::new_eof();
+        let mock_stream = MockStream::default().with_eof();
         let mut client = Client::new(mock_stream);
         if let Err(Error::ConnectionLost) = client.readline() {
         } else {
@@ -565,7 +565,7 @@ mod tests {
     #[should_panic]
     fn readline_err() {
         // TODO Check the error test
-        let mock_stream = MockStream::new_err();
+        let mock_stream = MockStream::default().with_err();
         let mut client = Client::new(mock_stream);
         client.readline().unwrap();
     }
@@ -573,7 +573,7 @@ mod tests {
     #[test]
     fn create_command() {
         let base_command = "CHECK";
-        let mock_stream = MockStream::new(Vec::new());
+        let mock_stream = MockStream::default();
         let mut imap_stream = Client::new(mock_stream);
 
         let expected_command = format!("a1 {}", base_command);

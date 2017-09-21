@@ -10,49 +10,42 @@ pub struct MockStream {
     read_delay: usize,
 }
 
+impl Default for MockStream {
+    fn default() -> Self {
+        MockStream {
+            read_buf: Vec::new(),
+            read_pos: 0,
+            written_buf: Vec::new(),
+            err_on_read: false,
+            eof_on_read: false,
+            read_delay: 0,
+        }
+    }
+}
+
 impl MockStream {
     pub fn new(read_buf: Vec<u8>) -> MockStream {
-        MockStream {
-            read_buf: read_buf,
-            read_pos: 0,
-            written_buf: Vec::new(),
-            err_on_read: false,
-            eof_on_read: false,
-            read_delay: 0,
-        }
+        MockStream::default().with_buf(read_buf)
     }
 
-    pub fn new_eof() -> MockStream {
-        MockStream {
-            read_buf: Vec::new(),
-            read_pos: 0,
-            written_buf: Vec::new(),
-            err_on_read: false,
-            eof_on_read: true,
-            read_delay: 0,
-        }
+    pub fn with_buf(mut self, read_buf: Vec<u8>) -> MockStream {
+        self.read_buf = read_buf;
+        self
     }
 
-    pub fn new_err() -> MockStream {
-        MockStream {
-            read_buf: Vec::new(),
-            read_pos: 0,
-            written_buf: Vec::new(),
-            err_on_read: true,
-            eof_on_read: false,
-            read_delay: 0,
-        }
+    pub fn with_eof(mut self) -> MockStream {
+        self.eof_on_read = true;
+        self
     }
 
-    pub fn new_read_delay(read_buf: Vec<u8>) -> MockStream {
-        MockStream {
-            read_buf: read_buf,
-            read_pos: 0,
-            written_buf: Vec::new(),
-            err_on_read: false,
-            eof_on_read: false,
-            read_delay: 1,
-        }
+    pub fn with_err(mut self) -> MockStream {
+        self.err_on_read = true;
+        self
+    }
+
+    pub fn with_delay(mut self) -> MockStream {
+        self.read_delay = 1;
+        self
     }
 }
 
