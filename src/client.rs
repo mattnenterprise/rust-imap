@@ -552,6 +552,16 @@ mod tests {
     }
 
     #[test]
+    fn readline_eof() {
+        let mock_stream = MockStream::new_eof();
+        let mut client = Client::new(mock_stream);
+        if let Err(Error::ConnectionLost) = client.readline() {
+        } else {
+            unreachable!("EOF read did not return connection lost");
+        }
+    }
+
+    #[test]
     #[should_panic]
     fn readline_err() {
         // TODO Check the error test
