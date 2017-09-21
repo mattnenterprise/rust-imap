@@ -5,6 +5,7 @@ use std::error::Error as StdError;
 use std::net::TcpStream;
 
 use openssl::ssl::HandshakeError as SslError;
+use bufstream::IntoInnerError as BufError;
 
 pub type Result<T> = result::Result<T, Error>;
 
@@ -28,6 +29,12 @@ pub enum Error {
 impl From<IoError> for Error {
     fn from(err: IoError) -> Error {
         Error::Io(err)
+    }
+}
+
+impl<T> From<BufError<T>> for Error {
+    fn from(err: BufError<T>) -> Error {
+        Error::Io(err.into())
     }
 }
 
