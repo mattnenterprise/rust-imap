@@ -4,7 +4,7 @@ use std::fmt;
 use std::error::Error as StdError;
 use std::net::TcpStream;
 
-use openssl::ssl::HandshakeError as SslError;
+use native_tls::HandshakeError as TlsHandshakeError;
 use bufstream::IntoInnerError as BufError;
 
 pub type Result<T> = result::Result<T, Error>;
@@ -14,8 +14,8 @@ pub type Result<T> = result::Result<T, Error>;
 pub enum Error {
     /// An `io::Error` that occurred while trying to read or write to a network stream.
     Io(IoError),
-    /// An error from the `openssl` library.
-    Ssl(SslError<TcpStream>),
+    /// An error from the `native_tls` library during the TLS handshake.
+    TlsHandshake(TlsHandshakeError<TcpStream>),
     /// A BAD response from the IMAP server.
     BadResponse(Vec<String>),
     /// A NO response from the IMAP server.
@@ -40,9 +40,9 @@ impl<T> From<BufError<T>> for Error {
     }
 }
 
-impl From<SslError<TcpStream>> for Error {
-    fn from(err: SslError<TcpStream>) -> Error {
-        Error::Ssl(err)
+impl From<TlsHandshakeError<TcpStream>> for Error {
+    fn from(err: TlsHandshakeError<TcpStream>) -> Error {
+        Error::TlsHandshake(err)
     }
 }
 
@@ -50,7 +50,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Error::Io(ref e) => fmt::Display::fmt(e, f),
-            Error::Ssl(ref e) => fmt::Display::fmt(e, f),
+            Error::TlsHandshake(ref e) => fmt::Display::fmt(e, f),
             ref e => f.write_str(e.description()),
         }
     }
@@ -60,7 +60,7 @@ impl StdError for Error {
     fn description(&self) -> &str {
         match *self {
             Error::Io(ref e) => e.description(),
-            Error::Ssl(ref e) => e.description(),
+            Error::TlsHandshake(ref e) => e.description(),
             Error::Parse(ref e) => e.description(),
             Error::BadResponse(_) => "Bad Response",
             Error::NoResponse(_) => "No Response",
@@ -72,7 +72,7 @@ impl StdError for Error {
     fn cause(&self) -> Option<&StdError> {
         match *self {
             Error::Io(ref e) => Some(e),
-            Error::Ssl(ref e) => Some(e),
+            Error::TlsHandshake(ref e) => Some(e),
             _ => None,
         }
     }
