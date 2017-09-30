@@ -5,6 +5,7 @@ use std::error::Error as StdError;
 use std::net::TcpStream;
 
 use native_tls::HandshakeError as TlsHandshakeError;
+use native_tls::Error as TlsError;
 use bufstream::IntoInnerError as BufError;
 
 pub type Result<T> = result::Result<T, Error>;
@@ -16,6 +17,8 @@ pub enum Error {
     Io(IoError),
     /// An error from the `native_tls` library during the TLS handshake.
     TlsHandshake(TlsHandshakeError<TcpStream>),
+    /// An error from the `native_tls` library while managing the socket.
+    Tls(TlsError),
     /// A BAD response from the IMAP server.
     BadResponse(Vec<String>),
     /// A NO response from the IMAP server.
@@ -46,10 +49,17 @@ impl From<TlsHandshakeError<TcpStream>> for Error {
     }
 }
 
+impl From<TlsError> for Error {
+    fn from(err: TlsError) -> Error {
+        Error::Tls(err)
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Error::Io(ref e) => fmt::Display::fmt(e, f),
+            Error::Tls(ref e) => fmt::Display::fmt(e, f),
             Error::TlsHandshake(ref e) => fmt::Display::fmt(e, f),
             ref e => f.write_str(e.description()),
         }
@@ -60,6 +70,7 @@ impl StdError for Error {
     fn description(&self) -> &str {
         match *self {
             Error::Io(ref e) => e.description(),
+            Error::Tls(ref e) => e.description(),
             Error::TlsHandshake(ref e) => e.description(),
             Error::Parse(ref e) => e.description(),
             Error::BadResponse(_) => "Bad Response",
@@ -72,6 +83,7 @@ impl StdError for Error {
     fn cause(&self) -> Option<&StdError> {
         match *self {
             Error::Io(ref e) => Some(e),
+            Error::Tls(ref e) => Some(e),
             Error::TlsHandshake(ref e) => Some(e),
             _ => None,
         }
