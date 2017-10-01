@@ -65,7 +65,3 @@ build: false
 
 test_script:
   - cargo test
-
-notifications:
-  - provider: Email
-    on_build_success: false
