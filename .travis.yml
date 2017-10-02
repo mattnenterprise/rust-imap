@@ -16,6 +16,11 @@ addons:
 rust:
 - stable
 - beta
+- nightly
+
+matrix:
+  allow_failures:
+    - rust: nightly
 
 before_install:
 - |
@@ -29,4 +34,4 @@ script:
   cargo bench
 
 after_success:
-- cargo coveralls
+- "if [ $TRAVIS_RUST_VERSION = stable ]; then cargo coveralls; fi"
