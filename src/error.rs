@@ -56,6 +56,12 @@ impl From<TlsError> for Error {
     }
 }
 
+impl From<FromUtf8Error> for Error {
+    fn from(err: FromUtf8Error) -> Error {
+        Error::Parse(ParseError::FromUtf8(err))
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
@@ -94,6 +100,10 @@ impl StdError for Error {
 
 #[derive(Debug)]
 pub enum ParseError {
+    // Error in the decoding of data.
+    FromUtf8(FromUtf8Error),
+    // Indicates an error parsing the fetch or uid fetch response.
+    FetchResponse(String),
     // Indicates an error parsing the status response. Such as OK, NO, and BAD.
     StatusResponse(Vec<String>),
     // Error parsing the cabability response.
@@ -114,6 +124,8 @@ impl fmt::Display for ParseError {
 impl StdError for ParseError {
     fn description(&self) -> &str {
         match *self {
+            ParseError::FromUtf8(_) => "Unable to decode the response as UTF-8.",
+            ParseError::FetchResponse(_) => "Unable to parse fetch response.",
             ParseError::StatusResponse(_) => "Unable to parse status response",
             ParseError::Capability(_) => "Unable to parse capability response",
             ParseError::Authentication(_) => "Unable to parse authentication response",
@@ -122,7 +134,8 @@ impl StdError for ParseError {
     }
 
     fn cause(&self) -> Option<&StdError> {
-        match *self {
+        match self {
+            &ParseError::FromUtf8(ref e) => Some(e),
             _ => None,
         }
     }
