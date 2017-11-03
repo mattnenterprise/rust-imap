@@ -3,4 +3,5 @@ pub struct Fetch {
     pub message: u32,
     pub flags: Vec<String>,
     pub uid: Option<u32>,
+    pub rfc822: Option<Vec<u8>>,
 }
