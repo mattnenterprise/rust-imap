@@ -67,6 +67,7 @@ pub fn parse_fetches(lines: &[u8]) -> Result<Vec<Fetch>> {
                 message: num,
                 flags: vec![],
                 uid: None,
+                rfc822: None,
             };
 
             for attr in attrs {
@@ -76,6 +77,7 @@ pub fn parse_fetches(lines: &[u8]) -> Result<Vec<Fetch>> {
                         fetch.flags.extend(flags.into_iter().map(|s| s.to_string()))
                     }
                     AttributeValue::Uid(uid) => fetch.uid = Some(uid),
+                    AttributeValue::Rfc822(rfc) => fetch.rfc822 = rfc.map(|v| v.to_vec()),
                     _ => {}
                 }
             }
@@ -228,11 +230,13 @@ mod tests {
                     message: 24,
                     flags: vec!["\\Seen".to_string()],
                     uid: Some(4827943),
+                    rfc822: None,
                 },
                 Fetch {
                     message: 25,
                     flags: vec!["\\Seen".to_string()],
                     uid: None,
+                    rfc822: None,
                 },
             ],
             fetches
