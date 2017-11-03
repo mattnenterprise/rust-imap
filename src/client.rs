@@ -7,7 +7,7 @@ use nom::IResult;
 
 use super::types::*;
 use super::authenticator::Authenticator;
-use super::parse::{parse_authenticate_response, parse_capability, parse_fetches, parse_mailbox,
+use super::parse::{parse_authenticate_response, parse_capabilities, parse_fetches, parse_mailbox,
                    parse_names};
 use super::error::{Error, ParseError, Result, ValidateError};
 
@@ -308,14 +308,14 @@ impl<T: Read + Write> Client<T> {
     }
 
     /// Fetch retreives data associated with a message in the mailbox.
-    pub fn fetch(&mut self, sequence_set: &str, query: &str) -> Result<Vec<Fetch>> {
+    pub fn fetch(&mut self, sequence_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("FETCH {} {}", sequence_set, query))
-            .and_then(|lines| parse_fetches(&lines[..]))
+            .and_then(|lines| parse_fetches(lines))
     }
 
-    pub fn uid_fetch(&mut self, uid_set: &str, query: &str) -> Result<Vec<Fetch>> {
+    pub fn uid_fetch(&mut self, uid_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("UID FETCH {} {}", uid_set, query))
-            .and_then(|lines| parse_fetches(&lines[..]))
+            .and_then(|lines| parse_fetches(lines))
     }
 
     /// Noop always succeeds, and it does nothing.
@@ -360,16 +360,9 @@ impl<T: Read + Write> Client<T> {
     }
 
     /// Capability requests a listing of capabilities that the server supports.
-    pub fn capability(&mut self) -> Result<Vec<String>> {
+    pub fn capabilities(&mut self) -> ZeroCopyResult<Capabilities> {
         self.run_command_and_read_response(&format!("CAPABILITY"))
-            .and_then(|lines| {
-                Ok(
-                    parse_capability(&lines[..])?
-                        .into_iter()
-                        .map(|s| s.to_string())
-                        .collect(),
-                )
-            })
+            .and_then(|lines| parse_capabilities(lines))
     }
 
     /// Expunge permanently removes all messages that have the \Deleted flag set from the currently
@@ -390,14 +383,14 @@ impl<T: Read + Write> Client<T> {
     }
 
     /// Store alters data associated with a message in the mailbox.
-    pub fn store(&mut self, sequence_set: &str, query: &str) -> Result<Vec<Fetch>> {
+    pub fn store(&mut self, sequence_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("STORE {} {}", sequence_set, query))
-            .and_then(|lines| parse_fetches(&lines[..]))
+            .and_then(|lines| parse_fetches(lines))
     }
 
-    pub fn uid_store(&mut self, uid_set: &str, query: &str) -> Result<Vec<Fetch>> {
+    pub fn uid_store(&mut self, uid_set: &str, query: &str) -> ZeroCopyResult<Vec<Fetch>> {
         self.run_command_and_read_response(&format!("UID STORE {} {}", uid_set, query))
-            .and_then(|lines| parse_fetches(&lines[..]))
+            .and_then(|lines| parse_fetches(lines))
     }
 
     /// Copy copies the specified message to the end of the specified destination mailbox.
@@ -415,12 +408,12 @@ impl<T: Read + Write> Client<T> {
         &mut self,
         reference_name: &str,
         mailbox_search_pattern: &str,
-    ) -> Result<Vec<Name>> {
+    ) -> ZeroCopyResult<Vec<Name>> {
         self.run_command_and_read_response(&format!(
             "LIST {} {}",
             quote!(reference_name),
             mailbox_search_pattern
-        )).and_then(|lines| parse_names(&lines[..]))
+        )).and_then(|lines| parse_names(lines))
     }
 
     /// The LSUB command returns a subset of names from the set of names
@@ -429,12 +422,12 @@ impl<T: Read + Write> Client<T> {
         &mut self,
         reference_name: &str,
         mailbox_search_pattern: &str,
-    ) -> Result<Vec<Name>> {
+    ) -> ZeroCopyResult<Vec<Name>> {
         self.run_command_and_read_response(&format!(
             "LSUB {} {}",
             quote!(reference_name),
             mailbox_search_pattern
-        )).and_then(|lines| parse_names(&lines[..]))
+        )).and_then(|lines| parse_names(lines))
     }
 
     /// The STATUS command requests the status of the indicated mailbox.
@@ -858,12 +851,15 @@ mod tests {
         let expected_capabilities = vec!["IMAP4rev1", "STARTTLS", "AUTH=GSSAPI", "LOGINDISABLED"];
         let mock_stream = MockStream::new(response);
         let mut client = Client::new(mock_stream);
-        let capabilities = client.capability().unwrap();
+        let capabilities = client.capabilities().unwrap();
         assert!(
             client.stream.get_ref().written_buf == b"a1 CAPABILITY\r\n".to_vec(),
             "Invalid capability command"
         );
-        assert_eq!(capabilities, expected_capabilities);
+        assert_eq!(capabilities.len(), 4);
+        for e in expected_capabilities {
+            assert!(capabilities.has(e));
+        }
     }
 
     #[test]
