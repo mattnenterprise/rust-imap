@@ -44,7 +44,7 @@ fn main() {
     };
 
     match imap_socket.fetch("2", "body[text]") {
-        Ok(msgs) => for msg in msgs {
+        Ok(msgs) => for msg in msgs.iter() {
             print!("{:?}", msg);
         },
         Err(e) => println!("Error Fetching email 2: {}", e),
