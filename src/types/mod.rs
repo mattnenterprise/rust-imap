@@ -115,4 +115,13 @@ impl<D: fmt::Debug> fmt::Debug for ZeroCopy<D> {
     }
 }
 
-// no IntoIter due to https://github.com/rust-lang/rust/issues/45743
+impl<'a, D> IntoIterator for &'a ZeroCopy<D>
+where
+    &'a D: IntoIterator,
+{
+    type Item = <&'a D as IntoIterator>::Item;
+    type IntoIter = <&'a D as IntoIterator>::IntoIter;
+    fn into_iter(self) -> Self::IntoIter {
+        (**self).into_iter()
+    }
+}
