@@ -447,7 +447,9 @@ impl<T: Read + Write> Client<T> {
 
     /// The APPEND command adds a mail to a mailbox.
     pub fn append(&mut self, folder: &str, content: &[u8]) -> Result<()> {
-        try!(self.run_command(&format!("APPEND \"{}\" {{{}}}", folder, content.len())));
+        try!(self.run_command(
+            &format!("APPEND \"{}\" {{{}}}", folder, content.len())
+        ));
         let mut v = Vec::new();
         try!(self.readline(&mut v));
         if !v.starts_with(b"+") {
@@ -499,10 +501,20 @@ impl<T: Read + Write> Client<T> {
                 let line = &data[line_start..];
 
                 match parse_response(line) {
-                    IResult::Done(_, Response::Done(tag, status, _, expl)) => {
+                    IResult::Done(
+                        _,
+                        Response::Done {
+                            tag,
+                            status,
+                            information,
+                            ..
+                        },
+                    ) => {
                         assert_eq!(tag.as_bytes(), match_tag.as_bytes());
                         Some(match status {
-                            Status::Bad | Status::No => Err((status, expl.map(|s| s.to_string()))),
+                            Status::Bad | Status::No => {
+                                Err((status, information.map(|s| s.to_string())))
+                            }
                             Status::Ok => Ok(()),
                             status => Err((status, None)),
                         })
@@ -822,6 +834,7 @@ mod tests {
             recent: 1,
             unseen: Some(1),
             permanent_flags: vec![
+                "\\*".to_string(),
                 "\\Answered".to_string(),
                 "\\Flagged".to_string(),
                 "\\Deleted".to_string(),
