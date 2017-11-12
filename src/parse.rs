@@ -55,10 +55,19 @@ pub fn parse_names(lines: Vec<u8>) -> ZeroCopyResult<Vec<Name>> {
     use imap_proto::MailboxDatum;
     let f = |resp| match resp {
         // https://github.com/djc/imap-proto/issues/4
-        Response::MailboxData(MailboxDatum::List(attrs, delim, name)) => MapOrNot::Map(Name {
-            attributes: attrs,
-            delimiter: delim,
-            name: name,
+        Response::MailboxData(MailboxDatum::List {
+            flags,
+            delimiter,
+            name,
+        }) |
+        Response::MailboxData(MailboxDatum::SubList {
+            flags,
+            delimiter,
+            name,
+        }) => MapOrNot::Map(Name {
+            attributes: flags,
+            delimiter,
+            name,
         }),
         resp => MapOrNot::Not(resp),
     };
@@ -128,7 +137,7 @@ pub fn parse_mailbox(mut lines: &[u8]) -> Result<Mailbox> {
 
     loop {
         match imap_proto::parse_response(lines) {
-            IResult::Done(rest, Response::Data(status, rcode, _)) => {
+            IResult::Done(rest, Response::Data { status, code, .. }) => {
                 lines = rest;
 
                 if let imap_proto::Status::Ok = status {
@@ -138,20 +147,21 @@ pub fn parse_mailbox(mut lines: &[u8]) -> Result<Mailbox> {
                 }
 
                 use imap_proto::ResponseCode;
-                match rcode {
+                match code {
                     Some(ResponseCode::UidValidity(uid)) => {
                         mailbox.uid_validity = Some(uid);
                     }
                     Some(ResponseCode::UidNext(unext)) => {
                         mailbox.uid_next = Some(unext);
                     }
+                    Some(ResponseCode::Unseen(n)) => {
+                        mailbox.unseen = Some(n);
+                    }
                     Some(ResponseCode::PermanentFlags(flags)) => {
                         mailbox
                             .permanent_flags
                             .extend(flags.into_iter().map(|s| s.to_string()));
                     }
-                    // TODO: UNSEEN
-                    // https://github.com/djc/imap-proto/issues/2
                     _ => {}
                 }
             }
@@ -171,7 +181,7 @@ pub fn parse_mailbox(mut lines: &[u8]) -> Result<Mailbox> {
                             .flags
                             .extend(flags.into_iter().map(|s| s.to_string()));
                     }
-                    MailboxDatum::List(..) => {}
+                    MailboxDatum::SubList { .. } | MailboxDatum::List { .. } => {}
                 }
             }
             IResult::Done(_, resp) => {
