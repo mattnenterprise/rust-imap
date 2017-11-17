@@ -519,8 +519,7 @@ impl<T: Read + Write> Client<T> {
                             status => Err((status, None)),
                         })
                     }
-                    IResult::Done(..) => None,
-                    IResult::Incomplete(..) => None,
+                    IResult::Done(..) | IResult::Incomplete(..) => None,
                     _ => Some(Err((Status::Bye, None))),
                 }
             };
