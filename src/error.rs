@@ -72,10 +72,7 @@ impl fmt::Display for Error {
             Error::Tls(ref e) => fmt::Display::fmt(e, f),
             Error::TlsHandshake(ref e) => fmt::Display::fmt(e, f),
             Error::Validate(ref e) => fmt::Display::fmt(e, f),
-            Error::NoResponse(ref data) => {
-                write!(f, "{}: {}", &String::from(self.description()), data)
-            }
-            Error::BadResponse(ref data) => {
+            Error::NoResponse(ref data) | Error::BadResponse(ref data) => {
                 write!(f, "{}: {}", &String::from(self.description()), data)
             }
             ref e => f.write_str(e.description()),
