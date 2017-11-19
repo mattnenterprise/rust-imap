@@ -484,6 +484,7 @@ impl<T: Read + Write> Client<T> {
     }
 
     fn read_response_onto(&mut self, data: &mut Vec<u8>) -> Result<()> {
+        let mut continue_from = None;
         let mut try_first = !data.is_empty();
         let match_tag = format!("{}{}", TAG_PREFIX, self.tag);
         loop {
@@ -493,7 +494,7 @@ impl<T: Read + Write> Client<T> {
             } else {
                 let start_new = data.len();
                 try!(self.readline(data));
-                start_new
+                continue_from.take().unwrap_or(start_new)
             };
 
             let break_with = {
@@ -519,7 +520,11 @@ impl<T: Read + Write> Client<T> {
                             status => Err((status, None)),
                         })
                     }
-                    IResult::Done(..) | IResult::Incomplete(..) => None,
+                    IResult::Done(..) => None,
+                    IResult::Incomplete(..) => {
+                        continue_from = Some(line_start);
+                        None
+                    }
                     _ => Some(Err((Status::Bye, None))),
                 }
             };
@@ -603,6 +608,18 @@ mod tests {
         let mut client = Client::new(mock_stream);
         let actual_response = client.read_response().unwrap();
         assert_eq!(Vec::<u8>::new(), actual_response);
+    }
+
+
+    #[test]
+    fn fetch_body() {
+        let response = "a0 OK Logged in.\r\n\
+                        * 2 FETCH (BODY[TEXT] {3}\r\nfoo)\r\n\
+                        a0 OK FETCH completed\r\n";
+        let mock_stream = MockStream::new(response.as_bytes().to_vec());
+        let mut client = Client::new(mock_stream);
+        client.read_response().unwrap();
+        client.read_response().unwrap();
     }
 
 
