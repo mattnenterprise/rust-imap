@@ -1,8 +1,10 @@
+use std::fmt;
 use std::net::{TcpStream, ToSocketAddrs};
 use native_tls::{TlsConnector, TlsStream};
 use std::io::{self, Read, Write};
 use std::time::Duration;
 use bufstream::BufStream;
+use chrono::prelude::*;
 
 use super::mailbox::Mailbox;
 use super::authenticator::Authenticator;
@@ -448,9 +450,46 @@ impl<T: Read + Write> Client<T> {
         IdleHandle::new(self)
     }
 
-    /// The APPEND command adds a mail to a mailbox.
-    pub fn append(&mut self, folder: &str, content: &[u8]) -> Result<Vec<String>> {
-        try!(self.run_command(&format!("APPEND \"{}\" {{{}}}", folder, content.len())));
+    /// The APPEND command adds a mail to a mailbox. If the datetime or flags are unspecified they
+    /// are not included in the request.
+    pub fn append<Tz: TimeZone>(
+        &mut self,
+        folder: &str,
+        flags: Option<Vec<String>>,
+        datetime: Option<DateTime<Tz>>,
+        content: &[u8],
+    ) -> Result<Vec<String>>
+    where
+        Tz::Offset: fmt::Display,
+    {
+        // Set up optional flags.
+        let mut optionals = String::new();
+        match flags {
+            None => (),
+            Some(flags) => {
+                optionals.push_str(&format!(
+                    "({})",
+                    flags
+                        .iter()
+                        .fold(String::new(), |acc, ref flag| acc + " " + &flag)
+                        .trim()
+                ));
+            }
+        }
+        optionals.push(' ');
+        match datetime {
+            None => (),
+            Some(datetime) => {
+                optionals.push_str(&format!("\"{}\"", datetime.format("%d-%b-%Y %H:%M:%S %z")))
+            }
+        }
+
+        try!(self.run_command(&format!(
+            "APPEND \"{}\" {} {{{}}}",
+            folder,
+            optionals,
+            content.len()
+        )));
         let line = try!(self.readline());
         if !line.starts_with(b"+") {
             return Err(Error::Append);

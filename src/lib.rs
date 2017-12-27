@@ -4,6 +4,7 @@
 //! imap is a IMAP client for Rust.
 
 extern crate bufstream;
+extern crate chrono;
 extern crate native_tls;
 extern crate regex;
 
