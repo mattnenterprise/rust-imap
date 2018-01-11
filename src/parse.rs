@@ -1,6 +1,7 @@
 use regex::Regex;
 use nom::IResult;
 use imap_proto::{self, Response};
+use imap_proto::types::StatusAttribute;
 
 use super::types::*;
 use super::error::{Error, ParseError, Result};
@@ -181,7 +182,18 @@ pub fn parse_mailbox(mut lines: &[u8]) -> Result<Mailbox> {
                             .flags
                             .extend(flags.into_iter().map(|s| s.to_string()));
                     }
-                    MailboxDatum::SubList { .. } | MailboxDatum::List { .. } => {}
+                    MailboxDatum::SubList { .. } | MailboxDatum::List { .. } => {},
+                    MailboxDatum::Status { mailbox: _, status } => {
+                        for f in status.into_iter() {
+                            match f {
+                                StatusAttribute::Recent(r) => mailbox.recent = r,
+                                StatusAttribute::Unseen(u) => mailbox.unseen = Some(u),
+                                StatusAttribute::UidNext(u) => mailbox.uid_next = Some(u),
+                                StatusAttribute::UidValidity(u) => mailbox.uid_validity = Some(u),
+                                StatusAttribute::Messages(m) => mailbox.exists = m,
+                            }
+                        }
+                    }
                 }
             }
             IResult::Done(_, resp) => {
