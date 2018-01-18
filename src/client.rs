@@ -5,10 +5,11 @@ use std::time::Duration;
 use bufstream::BufStream;
 use nom::IResult;
 
+use std::collections::HashMap;
 use super::types::*;
 use super::authenticator::Authenticator;
 use super::parse::{parse_authenticate_response, parse_capabilities, parse_fetches, parse_mailbox,
-                   parse_names};
+                   parse_names, parse_notify_status};
 use super::error::{Error, ParseError, Result, ValidateError};
 
 static TAG_PREFIX: &'static str = "a";
@@ -54,6 +55,43 @@ pub struct IdleHandle<'a, T: Read + Write + 'a> {
     done: bool,
 }
 
+pub struct NotifyItem<'a> {
+    mailbox: &'a str,
+    events: &'a[&'a str],
+}
+
+pub struct NotifyOp<'a> {
+    items: Vec<NotifyItem<'a>>,
+}
+
+impl<'a> NotifyOp<'a> {
+    pub fn new() -> Self {
+        NotifyOp {
+            items: vec![],
+        }
+    }
+
+    pub fn add_mailbox(mut self, mailbox_spec: &'a str, events: &'a[&'a str]) -> NotifyOp<'a> {
+        self.items.push(NotifyItem {
+            mailbox: mailbox_spec,
+            events: events,
+        });
+        self
+    }
+
+    pub fn is_none(&self) -> bool {
+        self.items.is_empty()
+    }
+}
+
+
+#[derive(Debug)]
+pub struct NotifyHandle<'a, T: Read + Write + 'a> {
+    client: &'a mut Client<T>,
+    keepalive: Duration,
+}
+
+
 /// Must be implemented for a transport in order for a `Client` using that transport to support
 /// operations with timeouts.
 ///
@@ -66,6 +104,59 @@ pub trait SetReadTimeout {
     ///
     /// See also `std::net::TcpStream::set_read_timeout`.
     fn set_read_timeout(&mut self, timeout: Option<Duration>) -> Result<()>;
+}
+
+impl<'a, T: Read + Write + 'a> NotifyHandle<'a, T> {
+    fn new(client: &'a mut Client<T>) -> Result<Self> {
+        Ok(NotifyHandle {
+            client: client,
+            keepalive: Duration::from_secs(29 * 60),
+        })
+    }
+
+    fn set(&mut self, cmd: NotifyOp<'a>) -> Result<()> {
+        // This command will end in a tagged OK but if the NOTIFY args contains
+        // a `STATUS` identifier, one status line for each specified mailbox
+        // will be emitted before the final OK.
+        //        self.client.run_command_and_read_response(&format!("NOTIFY {}"))
+
+        let mut s = "NOTIFY ".to_owned();
+
+        if cmd.items.len() == 0 {
+            s += "NONE";
+        } else {
+            s += "SET ";
+            for i in cmd.items.iter() {
+                s += &format!("({} ({}))",
+                              i.mailbox,
+                              i.events.iter().fold(String::new(), |sofar, cur| format!("{} {}", sofar, cur)));
+            }
+        };
+
+        self.client.run_command_and_check_ok(&s)
+    }
+
+    fn set_status(&mut self, cmd: NotifyOp<'a>) -> Result<HashMap<String, Mailbox>> {
+        if cmd.items.len() == 0 {
+            panic!("Cannot request a STATUS response without a mailbox specification!");
+        }
+
+        let mut s = "NOTIFY ".to_owned();
+
+        if cmd.items.len() == 0 {
+            s += "NONE";
+        } else {
+            s += "STATUS SET ";
+            for i in cmd.items.iter() {
+                s += &format!("({} ({}))",
+                              i.mailbox,
+                              i.events.iter().fold(String::new(), |sofar, cur| format!("{} {}", sofar, cur)));
+            }
+        };
+
+        let response: Vec<u8> = self.client.run_command_and_read_response(&s)?;
+        parse_notify_status(&response)
+    }
 }
 
 impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
@@ -443,6 +534,11 @@ impl<T: Read + Write> Client<T> {
     /// mailbox changes.
     pub fn idle(&mut self) -> Result<IdleHandle<T>> {
         IdleHandle::new(self)
+    }
+
+    /// Returns a handle that can be used to issue NOTIFY requests to a server that supports it
+    pub fn notify(&mut self) -> Result<NotifyHandle<T>> {
+        NotifyHandle::new(self)
     }
 
     /// The APPEND command adds a mail to a mailbox.

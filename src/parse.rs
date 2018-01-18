@@ -2,6 +2,7 @@ use regex::Regex;
 use nom::IResult;
 use imap_proto::{self, Response};
 use imap_proto::types::StatusAttribute;
+use std::collections::HashMap;
 
 use super::types::*;
 use super::error::{Error, ParseError, Result};
@@ -131,6 +132,55 @@ pub fn parse_capabilities(lines: Vec<u8>) -> ZeroCopyResult<Capabilities> {
     };
 
     unsafe { ZeroCopy::new(lines, f) }
+}
+
+pub fn parse_notify_status(mut lines: &[u8]) -> Result<HashMap<String, Mailbox>> {
+    let mut mailboxes = HashMap::new();
+    loop {
+
+        match imap_proto::parse_response(&lines) {
+            // Response contains data relating to a mailbox, exactly one mailbox per line
+            IResult::Done(rest, Response::MailboxData(m)) => {
+                lines = rest;
+
+                use imap_proto::MailboxDatum;
+                match m {
+                    MailboxDatum::Status { mailbox: mailbox_name, status } => {
+                        let mut mailbox = Mailbox::default();
+
+                        for f in status.into_iter() {
+                            match f {
+                                StatusAttribute::Recent(r) => mailbox.recent = r,
+                                StatusAttribute::Unseen(u) => mailbox.unseen = Some(u),
+                                StatusAttribute::UidNext(u) => mailbox.uid_next = Some(u),
+                                StatusAttribute::UidValidity(u) => mailbox.uid_validity = Some(u),
+                                StatusAttribute::Messages(m) => mailbox.exists = m,
+                            }
+                        }
+
+                        mailboxes.insert(mailbox_name.to_owned(), mailbox);
+                        if lines.is_empty() {
+                            break Ok(mailboxes)
+                        }
+                    },
+                    _ => {}
+                }
+            },
+            IResult::Done(rest, Response::Data { ref status, ..}) if *status == imap_proto::Status::No => {
+                // It is okay to get a NO response in a data line. This happens when the IMAP server
+                // iterates over the mail folder and finds subfolders that are not mailboxes. This is
+                // not a client error but a server misconfiguration and happens only to single mailboxes.
+                // Other lines may contain valid mailbox statuses, so be a little more reluctant here.
+                lines = rest;
+            }
+            IResult::Done(_, resp) => {
+                break Err(resp.into());
+            }
+            _ => {
+                break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+            }
+        }
+    }
 }
 
 pub fn parse_mailbox(mut lines: &[u8]) -> Result<Mailbox> {
