@@ -1040,6 +1040,43 @@ mod tests {
     }
 
     #[test]
+    fn notify_status() {
+        let response = b"* STATUS Spam (MESSAGES 42 UIDNEXT 1234 UIDVALIDITY 1224144230 UNSEEN 42)\r\n\
+            * STATUS Trash (MESSAGES 420 UIDNEXT 10234 UIDVALIDITY 1224144231 UNSEEN 23)\r\n\
+            * NO [SERVERBUG] Internal error occured. Refer to server log for more information.\r\n\
+            * STATUS RustNews (MESSAGES 1 UIDNEXT 2 UIDVALIDITY 1224144232 UNSEEN 1)\r\n\
+            a1 OK NOTIFY completed.\r\n"
+            .to_vec();
+
+        let expected_mailboxes: HashMap<String, Mailbox> =
+            [("Spam".to_owned(), Mailbox { exists: 42, uid_next: Some(1234), uid_validity: Some(1224144230), unseen: Some(42), flags: vec![], permanent_flags: vec![], recent: 0}),
+             ("Trash".to_owned(), Mailbox { exists: 420, uid_next: Some(10234), uid_validity: Some(1224144231), unseen: Some(23), flags: vec![], permanent_flags: vec![], recent: 0}),
+             ("RustNews".to_owned(), Mailbox { exists: 1, uid_next: Some(2), uid_validity: Some(1224144232), unseen: Some(1), flags: vec![], permanent_flags: vec![], recent: 0}),
+            ].iter().cloned().collect();
+
+        let mock_stream = MockStream::new(response);
+        let mut client = Client::new(mock_stream);
+        let mut notify = client.notify().unwrap();
+
+        let op = NotifyOp::new()
+            .add_mailbox("Spam", &["MessageNew"])
+            .add_mailbox("Trash", &["MessageNew", "MessageExpunge"])
+            .add_mailbox("SomeBug", &["MessageNew"])
+            .add_mailbox("RustNews", &["MessageNew", "MessageExpunge"]);
+
+        let mailboxes = notify.set_status(op).unwrap();
+
+        assert_eq!(mailboxes.len(), 3); // not 4
+        assert!(mailboxes.contains_key("Spam"));
+        assert!(mailboxes.contains_key("Trash"));
+        assert!(mailboxes.contains_key("RustNews"));
+
+        for (k, v) in mailboxes {
+            assert_eq!(v, *expected_mailboxes.get(&k).unwrap());
+        }
+    }
+
+    #[test]
     fn store() {
         generic_store(" ", |c, set, query| c.store(set, query));
     }
