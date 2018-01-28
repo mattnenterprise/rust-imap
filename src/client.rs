@@ -3,6 +3,7 @@ use native_tls::{TlsConnector, TlsStream};
 use std::io::{self, Read, Write};
 use std::time::Duration;
 use bufstream::BufStream;
+use regex::Regex;
 
 use super::mailbox::Mailbox;
 use super::authenticator::Authenticator;
@@ -318,13 +319,48 @@ impl<T: Read + Write> Client<T> {
         parse_select_or_examine(lines)
     }
 
-    /// Fetch retreives data associated with a message in the mailbox.
-    pub fn fetch(&mut self, sequence_set: &str, query: &str) -> Result<Vec<String>> {
-        self.run_command_and_read_response(&format!("FETCH {} {}", sequence_set, query))
+    fn fetch_result(&mut self, first_line: String) -> Result<(u32, Vec<u8>)> {
+        lazy_static! {
+            static ref START_RE: Regex = Regex::new("^\\* \\d+ FETCH \\D*(\\d+).*\\{(\\d+)\\}\r\n$").unwrap();
+        }
+        let (id, size) = if let Some(captures) = START_RE.captures(&first_line.clone()) {
+            (captures.get(1).unwrap().as_str().parse::<u32>().unwrap(),
+            captures.get(2).unwrap().as_str().parse::<usize>().unwrap())
+        } else {
+            return Err(Error::Parse(ParseError::FetchResponse(first_line)));
+        };
+        let mut data = Vec::new();
+        data.resize(size, 0);
+        try!(self.stream.read_exact(&mut data));
+        try!(self.readline()); // should be ")\r\n"
+        Ok((id, data))
     }
 
-    pub fn uid_fetch(&mut self, uid_set: &str, query: &str) -> Result<Vec<String>> {
-        self.run_command_and_read_response(&format!("UID FETCH {} {}", uid_set, query))
+    fn fetch_common(&mut self, untagged_command: &str) -> Result<Vec<(u32, Vec<u8>)>> {
+        try!(self.run_command(untagged_command));
+        let mut found_tag_line = false;
+        let start_str = format!("{}{} ", TAG_PREFIX, self.tag);
+        let mut results = Vec::new();
+
+        while !found_tag_line {
+            let raw_data = try!(self.readline());
+            let line = String::from_utf8(raw_data).unwrap();
+            if (&*line).starts_with(&*start_str) {
+                found_tag_line = true;
+            } else {
+                results.push(try!(self.fetch_result(line)));
+            }
+        }
+        Ok(results)
+    }
+
+    /// Fetch retreives data associated with a message in the mailbox.
+    pub fn fetch(&mut self, sequence_set: &str, query: &str) -> Result<Vec<(u32, Vec<u8>)>> {
+        self.fetch_common(&format!("FETCH {} {}", sequence_set, query).to_string())
+    }
+
+    pub fn uid_fetch(&mut self, uid_set: &str, query: &str) -> Result<Vec<(u32, Vec<u8>)>> {
+        self.fetch_common(&format!("UID FETCH {} {}", uid_set, query).to_string())
     }
 
     /// Noop always succeeds, and it does nothing.
