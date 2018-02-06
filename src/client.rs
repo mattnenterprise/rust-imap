@@ -157,6 +157,16 @@ impl<'a, T: Read + Write + 'a> NotifyHandle<'a, T> {
         let response: Vec<u8> = self.client.run_command_and_read_response(&s)?;
         parse_notify_status(&response)
     }
+
+    pub fn wait(&mut self) -> Result<(String, Mailbox)> {
+        let mut response :Vec<u8> = Vec::new();
+        self.client.readline(&mut response).unwrap();
+        let mailboxes = parse_notify_status(&response);
+
+        // Exactly one mailbox per line
+        let mailbox = mailboxes.unwrap().into_iter().next().unwrap();
+        Ok(mailbox)
+    }
 }
 
 impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
