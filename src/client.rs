@@ -114,7 +114,7 @@ impl<'a, T: Read + Write + 'a> NotifyHandle<'a, T> {
         })
     }
 
-    fn set(&mut self, cmd: NotifyOp<'a>) -> Result<()> {
+    pub fn set(&mut self, cmd: NotifyOp<'a>) -> Result<()> {
         // This command will end in a tagged OK but if the NOTIFY args contains
         // a `STATUS` identifier, one status line for each specified mailbox
         // will be emitted before the final OK.
@@ -127,7 +127,7 @@ impl<'a, T: Read + Write + 'a> NotifyHandle<'a, T> {
         } else {
             s += "SET ";
             for i in cmd.items.iter() {
-                s += &format!("({} ({}))",
+                s += &format!("(mailboxes {} ({}))",
                               i.mailbox,
                               i.events.iter().fold(String::new(), |sofar, cur| format!("{} {}", sofar, cur)));
             }
@@ -136,7 +136,7 @@ impl<'a, T: Read + Write + 'a> NotifyHandle<'a, T> {
         self.client.run_command_and_check_ok(&s)
     }
 
-    fn set_status(&mut self, cmd: NotifyOp<'a>) -> Result<HashMap<String, Mailbox>> {
+    pub fn set_status(&mut self, cmd: NotifyOp<'a>) -> Result<HashMap<String, Mailbox>> {
         if cmd.items.len() == 0 {
             panic!("Cannot request a STATUS response without a mailbox specification!");
         }
@@ -146,9 +146,9 @@ impl<'a, T: Read + Write + 'a> NotifyHandle<'a, T> {
         if cmd.items.len() == 0 {
             s += "NONE";
         } else {
-            s += "STATUS SET ";
+            s += "SET STATUS ";
             for i in cmd.items.iter() {
-                s += &format!("({} ({}))",
+                s += &format!("(mailboxes {} ({}))",
                               i.mailbox,
                               i.events.iter().fold(String::new(), |sofar, cur| format!("{} {}", sofar, cur)));
             }
