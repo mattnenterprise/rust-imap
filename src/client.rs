@@ -55,11 +55,13 @@ pub struct IdleHandle<'a, T: Read + Write + 'a> {
     done: bool,
 }
 
+/// A single item that a `NOTIFY` command should register for
 pub struct NotifyItem<'a> {
     mailbox: &'a str,
     events: &'a[&'a str],
 }
 
+/// A builder for a `NOTIFY` operation
 pub struct NotifyOp<'a> {
     items: Vec<NotifyItem<'a>>,
 }
@@ -71,6 +73,7 @@ impl<'a> NotifyOp<'a> {
         }
     }
 
+    /// Add a new mailbox specification to the command builder
     pub fn add_mailbox(mut self, mailbox_spec: &'a str, events: &'a[&'a str]) -> NotifyOp<'a> {
         self.items.push(NotifyItem {
             mailbox: mailbox_spec,
@@ -114,7 +117,8 @@ impl<'a, T: Read + Write + 'a> NotifyHandle<'a, T> {
         })
     }
 
-    pub fn set(&mut self, cmd: NotifyOp<'a>) -> Result<()> {
+    /// Replace the currently running `NOTIFY` operation or create a new one
+    pub fn set(&mut self, cmd: &NotifyOp) -> Result<()> {
         // This command will end in a tagged OK but if the NOTIFY args contains
         // a `STATUS` identifier, one status line for each specified mailbox
         // will be emitted before the final OK.
@@ -126,7 +130,7 @@ impl<'a, T: Read + Write + 'a> NotifyHandle<'a, T> {
             s += "NONE";
         } else {
             s += "SET ";
-            for i in cmd.items.iter() {
+            for i in &cmd.items {
                 s += &format!("(mailboxes {} ({}))",
                               i.mailbox,
                               i.events.iter().fold(String::new(), |sofar, cur| format!("{} {}", sofar, cur)));
@@ -136,18 +140,20 @@ impl<'a, T: Read + Write + 'a> NotifyHandle<'a, T> {
         self.client.run_command_and_check_ok(&s)
     }
 
-    pub fn set_status(&mut self, cmd: NotifyOp<'a>) -> Result<HashMap<String, Mailbox>> {
-        if cmd.items.len() == 0 {
+    /// Replace the currently running `NOTIFY` operation or create a new one.
+    /// This version adds a `STATUS` flag that results in a list of all specified mailboxes' statuses being returned.
+    pub fn set_status(&mut self, cmd: &NotifyOp) -> Result<HashMap<String, Mailbox>> {
+        if cmd.items.is_empty() {
             panic!("Cannot request a STATUS response without a mailbox specification!");
         }
 
         let mut s = "NOTIFY ".to_owned();
 
-        if cmd.items.len() == 0 {
+        if cmd.items.is_empty() {
             s += "NONE";
         } else {
             s += "SET STATUS ";
-            for i in cmd.items.iter() {
+            for i in &cmd.items {
                 s += &format!("(mailboxes {} ({}))",
                               i.mailbox,
                               i.events.iter().fold(String::new(), |sofar, cur| format!("{} {}", sofar, cur)));
@@ -158,12 +164,15 @@ impl<'a, T: Read + Write + 'a> NotifyHandle<'a, T> {
         parse_notify_status(&response)
     }
 
+    /// Waits for a registered `NOTIFY` event.
+    /// Returns the event's mailbox name and data.
     pub fn wait(&mut self) -> Result<(String, Mailbox)> {
         let mut response :Vec<u8> = Vec::new();
         self.client.readline(&mut response).unwrap();
         let mailboxes = parse_notify_status(&response);
 
-        // Exactly one mailbox per line
+        // Exactly one mailbox per line.
+        // TODO might be a little expensive to create a new HashMap even if we definitely there is exactly one
         let mailbox = mailboxes.unwrap().into_iter().next().unwrap();
         Ok(mailbox)
     }
@@ -547,8 +556,14 @@ impl<T: Read + Write> Client<T> {
     }
 
     /// Returns a handle that can be used to issue NOTIFY requests to a server that supports it
-    pub fn notify(&mut self) -> Result<NotifyHandle<T>> {
-        NotifyHandle::new(self)
+    pub fn notify(&mut self, op: &NotifyOp) -> Result<NotifyHandle<T>> {
+        NotifyHandle::new(self).and_then(|mut handle| handle.set(op).and_then(|_| Ok(handle)))
+    }
+
+    /// Returns a handle that can be used to issue NOTIFY requests to a server that supports it
+    /// and also immediately returns `STATUS` messages for all mailboxes specified
+    pub fn notify_status(&mut self, op: &NotifyOp) -> Result<(NotifyHandle<T>, HashMap<String,Mailbox>)> {
+        NotifyHandle::new(self).and_then(|mut handle| handle.set_status(op).and_then(|mailboxes| Ok((handle,mailboxes)) ) )
     }
 
     /// The APPEND command adds a mail to a mailbox.
@@ -1066,7 +1081,6 @@ mod tests {
 
         let mock_stream = MockStream::new(response);
         let mut client = Client::new(mock_stream);
-        let mut notify = client.notify().unwrap();
 
         let op = NotifyOp::new()
             .add_mailbox("Spam", &["MessageNew"])
@@ -1074,7 +1088,7 @@ mod tests {
             .add_mailbox("SomeBug", &["MessageNew"])
             .add_mailbox("RustNews", &["MessageNew", "MessageExpunge"]);
 
-        let mailboxes = notify.set_status(op).unwrap();
+        let (_notify_handle, mailboxes) = client.notify_status(&op).unwrap();
 
         assert_eq!(mailboxes.len(), 3); // not 4
         assert!(mailboxes.contains_key("Spam"));
