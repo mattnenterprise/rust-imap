@@ -1,8 +1,8 @@
 extern crate imap;
 extern crate native_tls;
 
-use native_tls::TlsConnector;
 use imap::client::Client;
+use native_tls::TlsConnector;
 
 // To connect to the gmail IMAP server with this you will need to allow unsecure apps access.
 // See: https://support.google.com/accounts/answer/6010255?hl=en
@@ -12,7 +12,7 @@ fn main() {
     let port = 993;
     let socket_addr = (domain, port);
     let ssl_connector = TlsConnector::builder().unwrap().build().unwrap();
-    let mut imap_socket = Client::secure_connect(socket_addr, domain, ssl_connector).unwrap();
+    let mut imap_socket = Client::secure_connect(socket_addr, domain, &ssl_connector).unwrap();
 
     imap_socket.login("username", "password").unwrap();
 

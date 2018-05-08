@@ -1,16 +1,16 @@
-use std::net::{TcpStream, ToSocketAddrs};
-use native_tls::{TlsConnector, TlsStream};
-use std::io::{self, Read, Write};
-use std::time::Duration;
 use bufstream::BufStream;
+use native_tls::{TlsConnector, TlsStream};
 use nom::IResult;
-
+use std::io::{self, Read, Write};
+use std::net::{TcpStream, ToSocketAddrs};
+use std::time::Duration;
 use std::collections::HashMap;
-use super::types::*;
+
 use super::authenticator::Authenticator;
+use super::error::{Error, ParseError, Result, ValidateError};
 use super::parse::{parse_authenticate_response, parse_capabilities, parse_fetches, parse_mailbox,
                    parse_names, parse_notify_status};
-use super::error::{Error, ParseError, Result, ValidateError};
+use super::types::*;
 
 static TAG_PREFIX: &'static str = "a";
 const INITIAL_TAG: u32 = 0;
@@ -18,9 +18,9 @@ const CR: u8 = 0x0d;
 const LF: u8 = 0x0a;
 
 macro_rules! quote {
-    ($x: expr) => (
+    ($x:expr) => {
         format!("\"{}\"", $x.replace(r"\", r"\\").replace("\"", "\\\""))
-    )
+    };
 }
 
 fn validate_str(value: &str) -> Result<String> {
@@ -207,8 +207,8 @@ impl<'a, T: Read + Write + 'a> IdleHandle<'a, T> {
         }
 
         self.client.read_response_onto(&mut v)?;
-        // We should *only* get a continuation on an error (i.e., it gives BAD or NO).
-        unreachable!();
+            // We should *only* get a continuation on an error (i.e., it gives BAD or NO).
+            unreachable!();
     }
 
     fn terminate(&mut self) -> Result<()> {
@@ -323,11 +323,11 @@ impl Client<TcpStream> {
     pub fn secure(
         mut self,
         domain: &str,
-        ssl_connector: TlsConnector,
+        ssl_connector: &TlsConnector,
     ) -> Result<Client<TlsStream<TcpStream>>> {
         // TODO This needs to be tested
         self.run_command_and_check_ok("STARTTLS")?;
-        TlsConnector::connect(&ssl_connector, domain, try!(self.stream.into_inner()))
+        TlsConnector::connect(ssl_connector, domain, try!(self.stream.into_inner()))
             .map(Client::new)
             .map_err(Error::TlsHandshake)
     }
@@ -338,11 +338,11 @@ impl Client<TlsStream<TcpStream>> {
     pub fn secure_connect<A: ToSocketAddrs>(
         addr: A,
         domain: &str,
-        ssl_connector: TlsConnector,
+        ssl_connector: &TlsConnector,
     ) -> Result<Client<TlsStream<TcpStream>>> {
         match TcpStream::connect(addr) {
             Ok(stream) => {
-                let ssl_stream = match TlsConnector::connect(&ssl_connector, domain, stream) {
+                let ssl_stream = match TlsConnector::connect(ssl_connector, domain, stream) {
                     Ok(s) => s,
                     Err(e) => return Err(Error::TlsHandshake(e)),
                 };
@@ -407,13 +407,13 @@ impl<T: Read + Write> Client<T> {
 
     /// Selects a mailbox
     pub fn select(&mut self, mailbox_name: &str) -> Result<Mailbox> {
-        self.run_command_and_read_response(&format!("SELECT {}", validate_str(mailbox_name)?))
+            self.run_command_and_read_response(&format!("SELECT {}", validate_str(mailbox_name)?))
             .and_then(|lines| parse_mailbox(&lines[..]))
     }
 
     /// Examine is identical to Select, but the selected mailbox is identified as read-only
     pub fn examine(&mut self, mailbox_name: &str) -> Result<Mailbox> {
-        self.run_command_and_read_response(&format!("EXAMINE {}", validate_str(mailbox_name)?))
+            self.run_command_and_read_response(&format!("EXAMINE {}", validate_str(mailbox_name)?))
             .and_then(|lines| parse_mailbox(&lines[..]))
     }
 
@@ -568,9 +568,7 @@ impl<T: Read + Write> Client<T> {
 
     /// The APPEND command adds a mail to a mailbox.
     pub fn append(&mut self, folder: &str, content: &[u8]) -> Result<()> {
-        try!(self.run_command(
-            &format!("APPEND \"{}\" {{{}}}", folder, content.len())
-        ));
+        try!(self.run_command(&format!("APPEND \"{}\" {{{}}}", folder, content.len())));
         let mut v = Vec::new();
         try!(self.readline(&mut v));
         if !v.starts_with(b"+") {
@@ -636,11 +634,11 @@ impl<T: Read + Write> Client<T> {
                         Some(match status {
                             Status::Bad | Status::No => {
                                 Err((status, information.map(|s| s.to_string())))
-                            }
+            }
                             Status::Ok => Ok(()),
                             status => Err((status, None)),
                         })
-                    }
+        }
                     IResult::Done(..) => None,
                     IResult::Incomplete(..) => {
                         continue_from = Some(line_start);
@@ -659,14 +657,14 @@ impl<T: Read + Write> Client<T> {
                     use imap_proto::Status;
                     match status {
                         Status::Bad => {
-                            break Err(Error::BadResponse(
-                                expl.unwrap_or("no explanation given".to_string()),
-                            ))
+                            break Err(Error::BadResponse(expl.unwrap_or(
+                                "no explanation given".to_string(),
+                            )))
                         }
                         Status::No => {
-                            break Err(Error::NoResponse(
-                                expl.unwrap_or("no explanation given".to_string()),
-                            ))
+                            break Err(Error::NoResponse(expl.unwrap_or(
+                                "no explanation given".to_string(),
+                            )))
                         }
                         _ => break Err(Error::Parse(ParseError::Invalid(data.split_off(0)))),
                     }
@@ -692,7 +690,7 @@ impl<T: Read + Write> Client<T> {
         if self.debug {
             // Remove CRLF
             let len = into.len();
-            let line = &into[(len - read - 2)..(len - 2)];
+            let line = &into[(len - read)..(len - 2)];
             print!("S: {}\n", String::from_utf8_lossy(line));
         }
 
@@ -718,9 +716,9 @@ impl<T: Read + Write> Client<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use super::super::mock_stream::MockStream;
     use super::super::error::Result;
+    use super::super::mock_stream::MockStream;
+    use super::*;
 
     #[test]
     fn read_response() {
@@ -730,7 +728,6 @@ mod tests {
         let actual_response = client.read_response().unwrap();
         assert_eq!(Vec::<u8>::new(), actual_response);
     }
-
 
     #[test]
     fn fetch_body() {
@@ -742,7 +739,6 @@ mod tests {
         client.read_response().unwrap();
         client.read_response().unwrap();
     }
-
 
     #[test]
     fn read_greeting() {

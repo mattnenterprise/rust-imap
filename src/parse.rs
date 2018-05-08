@@ -1,11 +1,11 @@
-use regex::Regex;
+use imap_proto::{self, Response, StatusAttribute};
 use nom::IResult;
-use imap_proto::{self, Response};
-use imap_proto::types::StatusAttribute;
+use regex::Regex;
 use std::collections::HashMap;
 
-use super::types::*;
+//use super::mailbox::Mailbox;
 use super::error::{Error, ParseError, Result};
+use super::types::*;
 
 pub fn parse_authenticate_response(line: String) -> Result<String> {
     let authenticate_regex = Regex::new("^+(.*)\r\n").unwrap();
@@ -37,11 +37,11 @@ where
                     match map(resp) {
                         MapOrNot::Map(t) => things.push(t),
                         MapOrNot::Not(resp) => break Err(resp.into()),
-                    }
+        }
 
                     if lines.is_empty() {
                         break Ok(things);
-                    }
+    }
                 }
                 _ => {
                     break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
@@ -51,87 +51,6 @@ where
     };
 
     ZeroCopy::new(lines, f)
-}
-
-pub fn parse_names(lines: Vec<u8>) -> ZeroCopyResult<Vec<Name>> {
-    use imap_proto::MailboxDatum;
-    let f = |resp| match resp {
-        // https://github.com/djc/imap-proto/issues/4
-        Response::MailboxData(MailboxDatum::List {
-            flags,
-            delimiter,
-            name,
-        }) |
-        Response::MailboxData(MailboxDatum::SubList {
-            flags,
-            delimiter,
-            name,
-        }) => MapOrNot::Map(Name {
-            attributes: flags,
-            delimiter,
-            name,
-        }),
-        resp => MapOrNot::Not(resp),
-    };
-
-    unsafe { parse_many(lines, f) }
-}
-
-pub fn parse_fetches(lines: Vec<u8>) -> ZeroCopyResult<Vec<Fetch>> {
-    let f = |resp| match resp {
-        Response::Fetch(num, attrs) => {
-            let mut fetch = Fetch {
-                message: num,
-                flags: vec![],
-                uid: None,
-                rfc822: None,
-            };
-
-            for attr in attrs {
-                use imap_proto::AttributeValue;
-                match attr {
-                    AttributeValue::Flags(flags) => {
-                        fetch.flags.extend(flags);
-                    }
-                    AttributeValue::Uid(uid) => fetch.uid = Some(uid),
-                    AttributeValue::Rfc822(rfc) => fetch.rfc822 = rfc,
-                    _ => {}
-                }
-            }
-
-            MapOrNot::Map(fetch)
-        }
-        resp => MapOrNot::Not(resp),
-    };
-
-    unsafe { parse_many(lines, f) }
-}
-
-pub fn parse_capabilities(lines: Vec<u8>) -> ZeroCopyResult<Capabilities> {
-    let f = |mut lines| {
-        use std::collections::HashSet;
-        let mut caps = HashSet::new();
-        loop {
-            match imap_proto::parse_response(lines) {
-                IResult::Done(rest, Response::Capabilities(c)) => {
-                    lines = rest;
-                    caps.extend(c);
-
-                    if lines.is_empty() {
-                        break Ok(Capabilities(caps));
-                    }
-                }
-                IResult::Done(_, resp) => {
-                    break Err(resp.into());
-                }
-                _ => {
-                    break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
-                }
-            }
-        }
-    };
-
-    unsafe { ZeroCopy::new(lines, f) }
 }
 
 pub fn parse_notify_status(mut lines: &[u8]) -> Result<HashMap<String, Mailbox>> {
@@ -183,6 +102,90 @@ pub fn parse_notify_status(mut lines: &[u8]) -> Result<HashMap<String, Mailbox>>
     }
 }
 
+
+pub fn parse_names(lines: Vec<u8>) -> ZeroCopyResult<Vec<Name>> {
+    use imap_proto::MailboxDatum;
+    let f = |resp| match resp {
+        // https://github.com/djc/imap-proto/issues/4
+        Response::MailboxData(MailboxDatum::List {
+            flags,
+            delimiter,
+            name,
+        })
+        | Response::MailboxData(MailboxDatum::SubList {
+            flags,
+            delimiter,
+            name,
+        }) => MapOrNot::Map(Name {
+            attributes: flags,
+            delimiter,
+            name,
+        }),
+        resp => MapOrNot::Not(resp),
+    };
+
+    unsafe { parse_many(lines, f) }
+}
+
+pub fn parse_fetches(lines: Vec<u8>) -> ZeroCopyResult<Vec<Fetch>> {
+    let f = |resp| match resp {
+        Response::Fetch(num, attrs) => {
+            let mut fetch = Fetch {
+                message: num,
+                flags: vec![],
+                uid: None,
+                rfc822_header: None,
+                rfc822: None,
+    };
+
+            for attr in attrs {
+                use imap_proto::AttributeValue;
+                match attr {
+                    AttributeValue::Flags(flags) => {
+                        fetch.flags.extend(flags);
+                    }
+                    AttributeValue::Uid(uid) => fetch.uid = Some(uid),
+                    AttributeValue::Rfc822(rfc) => fetch.rfc822 = rfc,
+                    AttributeValue::Rfc822Header(rfc) => fetch.rfc822_header = rfc,
+            _ => {}
+        }
+    }
+
+            MapOrNot::Map(fetch)
+}
+        resp => MapOrNot::Not(resp),
+    };
+
+    unsafe { parse_many(lines, f) }
+}
+
+pub fn parse_capabilities(lines: Vec<u8>) -> ZeroCopyResult<Capabilities> {
+    let f = |mut lines| {
+        use std::collections::HashSet;
+        let mut caps = HashSet::new();
+        loop {
+            match imap_proto::parse_response(lines) {
+                IResult::Done(rest, Response::Capabilities(c)) => {
+                    lines = rest;
+                    caps.extend(c);
+
+                    if lines.is_empty() {
+                        break Ok(Capabilities(caps));
+                    }
+                }
+                IResult::Done(_, resp) => {
+                    break Err(resp.into());
+                }
+                _ => {
+                    break Err(Error::Parse(ParseError::Invalid(lines.to_vec())));
+                }
+            }
+        }
+    };
+
+    unsafe { ZeroCopy::new(lines, f) }
+}
+
 pub fn parse_mailbox(mut lines: &[u8]) -> Result<Mailbox> {
     let mut mailbox = Mailbox::default();
 
@@ -221,18 +224,6 @@ pub fn parse_mailbox(mut lines: &[u8]) -> Result<Mailbox> {
 
                 use imap_proto::MailboxDatum;
                 match m {
-                    MailboxDatum::Exists(e) => {
-                        mailbox.exists = e;
-                    }
-                    MailboxDatum::Recent(r) => {
-                        mailbox.recent = r;
-                    }
-                    MailboxDatum::Flags(flags) => {
-                        mailbox
-                            .flags
-                            .extend(flags.into_iter().map(|s| s.to_string()));
-                    }
-                    MailboxDatum::SubList { .. } | MailboxDatum::List { .. } => {},
                     MailboxDatum::Status { mailbox: _, status } => {
                         for f in status.into_iter() {
                             match f {
@@ -244,6 +235,18 @@ pub fn parse_mailbox(mut lines: &[u8]) -> Result<Mailbox> {
                             }
                         }
                     }
+                    MailboxDatum::Exists(e) => {
+                        mailbox.exists = e;
+                    }
+                    MailboxDatum::Recent(r) => {
+                        mailbox.recent = r;
+                    }
+                    MailboxDatum::Flags(flags) => {
+                        mailbox
+                            .flags
+                            .extend(flags.into_iter().map(|s| s.to_string()));
+                    }
+                    MailboxDatum::SubList { .. } | MailboxDatum::List { .. } => {}
                 }
             }
             IResult::Done(_, resp) => {
