@@ -1,3 +1,4 @@
+extern crate base64;
 use bufstream::BufStream;
 use native_tls::{TlsConnector, TlsStream};
 use nom;
@@ -934,6 +935,28 @@ mod tests {
         assert!(
             command2 == expected_command2,
             "expected command doesn't equal actual command"
+        );
+    }
+
+    #[test]
+    fn authenticate() {
+        let response = b"+\r\n\
+                         a1 OK Logged in\r\n".to_vec();
+        let command =  "a1 AUTHENTICATE PLAIN\r\n\
+                        Zm9v\r\n";
+        let mock_stream = MockStream::new(response);
+        let client = Client::new(mock_stream);
+        enum Authenticate { Auth };
+        impl Authenticator for Authenticate {
+            fn process(&self, _: String) -> String {
+                "foo".to_string()
+            }
+        }
+        let auth = Authenticate::Auth;
+        let session = client.authenticate("PLAIN", auth).unwrap();
+        assert!(
+            session.stream.get_ref().written_buf == command.as_bytes().to_vec(),
+            "Invalid authenticate command"
         );
     }
 
